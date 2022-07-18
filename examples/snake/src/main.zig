@@ -1,7 +1,7 @@
 const std = @import("std");
 const assets = @import("assets.zig");
 const SnakeGame = @import("game.zig").SnakeGame;
-const System = @import("system.zig").System;
+const system = @import("system.zig");
 const Event = @import("event.zig").Event;
 const parseEventJson = @import("event.zig").parseJson;
 
@@ -17,14 +17,11 @@ export fn gameNew() *anyopaque {
 
 export fn gameInitialize(game_ptr: *anyopaque) ?*anyopaque {
     const game = @ptrCast(*SnakeGame, @alignCast(@typeInfo(*SnakeGame).Pointer.alignment, game_ptr));
-    var system = System{};
-    game.initialize(&system) catch @panic("failed to initialize the game (TODO)");
+    game.initialize() catch @panic("failed to initialize the game (TODO)");
     return null; // no error
 }
 
 export fn gameHandleEvent(game_ptr: *anyopaque, event_bytes_ptr: *anyopaque, data_ptr: ?*anyopaque) ?*anyopaque {
-    var system = System{};
-
     const event_bytes = @ptrCast(*Bytes, @alignCast(@typeInfo(*Bytes).Pointer.alignment, event_bytes_ptr));
     defer memoryFreeBytes(event_bytes_ptr);
 
@@ -39,9 +36,9 @@ export fn gameHandleEvent(game_ptr: *anyopaque, event_bytes_ptr: *anyopaque, dat
     if (data_ptr) |ptr| {
         const data = @ptrCast(*Bytes, @alignCast(@typeInfo(*Bytes).Pointer.alignment, ptr));
         defer memoryFreeBytes(ptr);
-        do_continue = game.handleEvent(&system, .{ .event = event, .data = data.inner }) catch @panic("TODO");
+        do_continue = game.handleEvent(.{ .event = event, .data = data.inner }) catch @panic("TODO");
     } else {
-        do_continue = game.handleEvent(&system, .{ .event = event, .data = null }) catch @panic("TODO");
+        do_continue = game.handleEvent(.{ .event = event, .data = null }) catch @panic("TODO");
     }
 
     if (do_continue) {

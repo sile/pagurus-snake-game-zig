@@ -8,14 +8,12 @@ pub const SnakeGame = struct {
         return SnakeGame{ .x = 10 };
     }
 
-    pub fn initialize(self: *SnakeGame, system: *System) !void {
+    pub fn initialize(self: *SnakeGame) !void {
         _ = self;
-        _ = system;
     }
 
-    pub fn handleEvent(self: *SnakeGame, system: *System, event: EventWithData) !bool {
+    pub fn handleEvent(self: *SnakeGame, event: EventWithData) !bool {
         _ = self;
-        _ = system;
         _ = event;
         return true;
     }
