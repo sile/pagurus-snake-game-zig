@@ -4,28 +4,39 @@ const assets = @import("assets.zig");
 const Canvas = assets.Canvas;
 const Size = assets.Size;
 const Position = assets.Position;
-
-// TODO: rename
-var IMAGE_DATA: [384 * 384 * 3]u8 = undefined;
+const LogicalWindow = assets.LogicalWindow;
+const ALLOCATOR = @import("main.zig").ALLOCATOR;
 
 pub const SnakeGame = struct {
-    canvas: Canvas,
+    logical_window: LogicalWindow,
 
     pub fn initialize(self: *SnakeGame) !void {
         const canvas_size = Size.square(384);
-        self.canvas = .{ .image_data = IMAGE_DATA[0..], .image_size = canvas_size };
-        self.canvas.drawSprite(Position.ORIGIN, assets.BACKGROUND);
-        system.videoDraw(self.canvas.image_data, self.canvas.image_size);
+        self.logical_window = LogicalWindow.new(canvas_size);
     }
 
-    pub fn handleEvent(self: *SnakeGame, event: EventWithData) !bool {
-        _ = self;
-        switch (event.event) {
+    pub fn handleEvent(self: *SnakeGame, event_with_data: EventWithData) !bool {
+        const event = self.logical_window.handleEvent(event_with_data.event);
+        switch (event) {
             .terminating => {
                 return false;
+            },
+            .window_redraw_needed => {
+                self.drawVideoFrame() catch @panic("TODO");
             },
             else => {},
         }
         return true;
+    }
+
+    fn drawVideoFrame(self: SnakeGame) !void {
+        var canvas = try Canvas.new(ALLOCATOR, self.logical_window.logical_window_size);
+        defer canvas.deinit(ALLOCATOR);
+
+        canvas.fillRgb(.{ .r = 0, .g = 0, .b = 0 });
+        var canvas_view = try canvas.view(self.logical_window.canvas_region);
+        canvas_view.drawSprite(Position.ORIGIN, assets.BACKGROUND);
+
+        system.videoDraw(canvas.image_data, canvas.image_size);
     }
 };

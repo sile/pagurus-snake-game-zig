@@ -1,4 +1,5 @@
 const std = @import("std");
+const Size = @import("assets.zig").Size;
 
 pub const ActionId = u64;
 
@@ -24,7 +25,7 @@ pub const KeyUpEvent = struct { key: struct { up: struct { key: Key } } };
 
 pub const MouseEvent = struct {};
 
-pub const WindowRedrawNeededEvent = struct { window: struct { redrawNeeded: struct { size: struct { width: u32, height: u32 } } } };
+pub const WindowRedrawNeededEvent = struct { window: struct { redrawNeeded: struct { size: Size } } };
 
 pub const StateSavedEvent = struct { state: struct { saved: struct { id: ActionId } } };
 

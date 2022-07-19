@@ -6,7 +6,7 @@ const Event = @import("event.zig").Event;
 const parseEventJson = @import("event.zig").parseJson;
 
 var GBA = std.heap.GeneralPurposeAllocator(.{}){};
-const ALLOCATOR = GBA.allocator();
+pub const ALLOCATOR = GBA.allocator();
 
 const Bytes = struct { inner: []u8 };
 
