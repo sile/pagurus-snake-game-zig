@@ -109,7 +109,10 @@ pub const PixelIterator = struct {
             .a = self.sprite.image_data[i + 3],
         };
 
-        return PixelIterator.Item{ .position = current, .rgba = pixel };
+        var relative_position = current;
+        relative_position.x -= self.sprite.sprite_region.position.x;
+        relative_position.y -= self.sprite.sprite_region.position.y;
+        return PixelIterator.Item{ .position = relative_position, .rgba = pixel };
     }
 };
 
@@ -260,3 +263,55 @@ pub const LogicalWindow = struct {
 };
 
 pub const BACKGROUND: Sprite = createSprite(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));
+
+pub const ButtonState = enum { normal, focused, pressed, clicked };
+
+pub const ButtonSprites = struct { normal: Sprite, focused: Sprite, pressed: Sprite };
+
+pub const ButtonWidget = struct { //
+    state: ButtonState,
+    sprites: ButtonSprites,
+
+    pub fn new(sprites: ButtonSprites) ButtonWidget {
+        return .{ .state = ButtonState.normal, .sprites = sprites };
+    }
+
+    pub fn currentSprite(self: ButtonWidget) Sprite {
+        switch (self.state) {
+            .normal => {
+                return self.sprites.normal;
+            },
+            .focused => {
+                return self.sprites.focused;
+            },
+            .pressed => {
+                return self.sprites.pressed;
+            },
+            .clicked => {
+                return self.sprites.pressed;
+            },
+        }
+    }
+};
+
+pub const IMG_BUTTONS = @embedFile("../assets/buttons.rawrgba");
+
+pub const PLAY_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 0), wh(160, 33));
+pub const PLAY_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 0), wh(160, 33));
+pub const PLAY_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 0), wh(160, 33));
+
+pub const PLAY_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
+    .normal = PLAY_BUTTON_NORMAL,
+    .focused = PLAY_BUTTON_FOCUSED,
+    .pressed = PLAY_BUTTON_PRESSED,
+});
+
+pub const EXIT_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 33), wh(160, 33));
+pub const EXIT_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 33), wh(160, 33));
+pub const EXIT_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 33), wh(160, 33));
+
+pub const EXIT_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
+    .normal = EXIT_BUTTON_NORMAL,
+    .focused = EXIT_BUTTON_FOCUSED,
+    .pressed = EXIT_BUTTON_PRESSED,
+});
