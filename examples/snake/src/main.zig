@@ -48,7 +48,7 @@ export fn gameHandleEvent(game_ptr: *anyopaque, event_bytes_ptr: *anyopaque, dat
         var bytes = ALLOCATOR.create(Bytes) catch return null;
         bytes.inner = inner;
         std.mem.copy(u8, bytes.inner, "null");
-        return @ptrCast(*u8, bytes.inner.ptr);
+        return bytes;
     }
 }
 

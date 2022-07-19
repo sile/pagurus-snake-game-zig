@@ -20,7 +20,12 @@ pub const SnakeGame = struct {
 
     pub fn handleEvent(self: *SnakeGame, event: EventWithData) !bool {
         _ = self;
-        _ = event;
+        switch (event.event) {
+            .terminating => {
+                return false;
+            },
+            else => {},
+        }
         return true;
     }
 };
