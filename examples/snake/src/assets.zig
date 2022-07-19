@@ -1,9 +1,100 @@
 pub const IMG_BACKGROUND = @embedFile("../assets/background.rawrgba");
+const system = @import("system.zig");
 
 // TODO: move
-pub const Size = struct { width: u32, height: u32 };
-pub const Position = struct { x: i32, y: i32 };
-pub const Region = struct { position: Position, size: Size };
+pub const Size = struct {
+    width: u32,
+    height: u32,
+
+    pub fn toRegion(self: Size) Region {
+        return .{ .position = xy(0, 0), .size = self };
+    }
+
+    pub fn square(size: usize) Size {
+        return .{ .width = size, .height = size };
+    }
+};
+
+pub const Position = struct {
+    x: i32,
+    y: i32,
+
+    pub const ORIGIN: Position = .{ .x = 0, .y = 0 };
+
+    fn isLessThanOrEqualTo(self: Position, other: Position) bool {
+        return self.x <= other.x and self.y <= other.y;
+    }
+};
+
+pub const Region = struct {
+    position: Position,
+    size: Size,
+
+    pub fn startPosition(self: Region) Position {
+        return self.position;
+    }
+
+    pub fn endPosition(self: Region) Position {
+        return .{ .x = self.position.x + @intCast(i32, self.size.width), .y = self.position.y + @intCast(i32, self.size.height) };
+    }
+
+    pub fn containsRegion(self: Region, other: Region) bool {
+        return self.startPosition().isLessThanOrEqualTo(other.startPosition()) and
+            other.endPosition().isLessThanOrEqualTo(self.endPosition());
+    }
+
+    pub fn containsPosition(self: Region, pos: Position) bool {
+        return self.containsRegion(.{ .position = pos, .size = wh(0, 0) });
+    }
+};
+
+pub const Rgb = struct { r: u8, g: u8, b: u8 };
+
+pub const Rgba = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+
+    pub fn toAlphaBlendRgb(self: Rgba, dst: Rgb) Rgb {
+        return .{ .r = blend(self.r, dst.r, self.a), .g = blend(self.g, dst.g, self.a), .b = blend(self.b, dst.b, self.a) };
+    }
+};
+
+fn blend(src: u16, dst: u16, alpha: u16) u8 {
+    const v = src * alpha + dst * (255 - alpha);
+    return @intCast(u8, v / 255);
+}
+
+pub const PixelIterator = struct {
+    pub const Item = struct { position: Position, rgba: Rgba };
+
+    sprite: Sprite,
+    position: Position,
+
+    pub fn next(self: *PixelIterator) ?PixelIterator.Item {
+        if (self.position.y == self.sprite.sprite_region.endPosition().y) {
+            return null;
+        }
+
+        const current = self.position;
+        self.position.x += 1;
+        if (self.position.x == self.sprite.sprite_region.endPosition().x) {
+            self.position.x = self.sprite.sprite_region.position.x;
+            self.position.y += 1;
+        }
+
+        const i = (@intCast(usize, current.y) * @intCast(usize, self.sprite.image_size.width) + @intCast(usize, current.x)) * 4;
+        const pixel = .{ //
+            .r = self.sprite.image_data[i],
+            .g = self.sprite.image_data[i + 1],
+            .b = self.sprite.image_data[i + 2],
+            .a = self.sprite.image_data[i + 3],
+        };
+
+        return PixelIterator.Item{ .position = current, .rgba = pixel };
+    }
+};
 
 // TODO: move
 pub const Sprite = struct {
@@ -11,6 +102,10 @@ pub const Sprite = struct {
     image_data: []const u8,
     image_size: Size,
     sprite_region: Region,
+
+    pub fn pixels(self: Sprite) PixelIterator {
+        return .{ .sprite = self, .position = self.sprite_region.position };
+    }
 };
 
 pub fn createSprite(image_data: []const u8, image_size: Size, sprite_position: Position, sprite_size: Size) Sprite {
@@ -31,15 +126,54 @@ pub fn square(size: u32) Size {
 
 pub const Canvas = struct {
     // RGB
-    image_data: []const u8,
+    image_data: []u8,
     image_size: Size,
 
     pub fn view(self: Canvas, region: Region) !CanvasView {
-        // TODO: validate
-        return CanvasView{ .canvs = self, .region = region };
+        const self_region = self.image_size.toRegion();
+        const contains = self_region.containsRegion(region);
+        if (!contains) {
+            return error.CanvasOutOfRegion;
+        }
+        return CanvasView{ .canvas = self, .region = region };
+    }
+
+    pub fn drawSprite(self: Canvas, offset: Position, sprite: Sprite) void {
+        var canvas_view = self.view(self.image_size.toRegion()) catch unreachable;
+        canvas_view.drawSprite(offset, sprite);
     }
 };
 
-pub const CanvasView = struct { canvas: Canvas, region: Region };
+pub const CanvasView = struct {
+    canvas: Canvas,
+    region: Region,
+
+    pub fn drawSprite(self: CanvasView, offset: Position, sprite: Sprite) void {
+        const w = @intCast(i32, self.canvas.image_size.width);
+        var canvas_offset = offset;
+        canvas_offset.x += self.region.position.x;
+        canvas_offset.y += self.region.position.y;
+
+        var pixels = sprite.pixels();
+        while (pixels.next()) |pixel| {
+            var canvas_pos = canvas_offset;
+            canvas_pos.x += pixel.position.x;
+            canvas_pos.y += pixel.position.y;
+
+            if (self.region.containsPosition(canvas_pos)) {
+                const i = @intCast(usize, canvas_pos.y * w + canvas_pos.x) * 3;
+
+                const rgb = pixel.rgba.toAlphaBlendRgb(.{ //
+                    .r = self.canvas.image_data[i + 0],
+                    .g = self.canvas.image_data[i + 1],
+                    .b = self.canvas.image_data[i + 2],
+                });
+                self.canvas.image_data[i + 0] = rgb.r;
+                self.canvas.image_data[i + 1] = rgb.g;
+                self.canvas.image_data[i + 2] = rgb.b;
+            }
+        }
+    }
+};
 
 pub const BACKGROUND: Sprite = createSprite(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));

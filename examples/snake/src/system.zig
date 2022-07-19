@@ -12,3 +12,13 @@ extern fn systemConsoleLog(message: *const u8, message_len: usize) void;
 pub fn consoleLog(message: []const u8) void {
     systemConsoleLog(@ptrCast(*const u8, message.ptr), message.len);
 }
+
+pub fn consoleLogFmt(comptime fmt: []const u8, args: anytype) void {
+    var buffer: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
+
+    if (std.fmt.allocPrint(allocator, fmt, args) catch null) |message| {
+        consoleLog(message);
+    }
+}

@@ -12,7 +12,7 @@ const Bytes = struct { inner: []u8 };
 
 export fn gameNew() *anyopaque {
     const game = ALLOCATOR.create(SnakeGame) catch @panic("failed to allocate SnakeGame");
-    return @ptrCast(*anyopaque, game);
+    return game;
 }
 
 export fn gameInitialize(game_ptr: *anyopaque) ?*anyopaque {
