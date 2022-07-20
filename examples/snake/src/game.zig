@@ -11,11 +11,12 @@ const ALLOCATOR = @import("main.zig").ALLOCATOR;
 const std = @import("std");
 
 pub const Context = struct {
+    prng: *std.rand.DefaultPrng,
     is_redraw_needed: bool,
     exit: bool,
 
-    pub fn new() Context {
-        return .{ .is_redraw_needed = false, .exit = false };
+    pub fn new(prng: *std.rand.DefaultPrng) Context {
+        return .{ .prng = prng, .is_redraw_needed = false, .exit = false };
     }
 };
 
@@ -32,7 +33,7 @@ pub const SnakeGame = struct {
     }
 
     pub fn handleEvent(self: *SnakeGame, event_with_data: EventWithData) !bool {
-        var context = Context.new();
+        var context = Context.new(&self.prng);
         self.stage.handleEvent(event_with_data, &context);
         if (context.is_redraw_needed) {
             self.drawVideoFrame() catch @panic("TODO");
@@ -86,7 +87,7 @@ pub const Stage = union(StageType) {
             switch (ty) {
                 .title => {},
                 .playing => {
-                    self.* = .{ .playing = PlayingStage.new() };
+                    self.* = .{ .playing = PlayingStage.new(context) };
                 },
                 .game_over => {},
             }
@@ -130,8 +131,14 @@ pub const TitleStage = struct {
 };
 
 pub const PlayingStage = struct {
-    pub fn new() PlayingStage {
-        return .{};
+    const Self = @This();
+
+    state: GameState,
+
+    pub fn new(context: *Context) PlayingStage {
+        return .{
+            .state = GameState.new(context),
+        };
     }
 
     fn handleEvent(self: *PlayingStage, ewd: EventWithData, context: *Context) ?StageType {
@@ -142,8 +149,7 @@ pub const PlayingStage = struct {
     }
 
     fn render(self: PlayingStage, canvas: CanvasView) void {
-        _ = self;
-        _ = canvas;
+        self.state.render(canvas);
     }
 };
 
@@ -211,16 +217,64 @@ pub const ButtonGroup = struct {
 pub const GameState = struct {
     const Self = @This();
 
-    //snake: Snake,
+    snake: Snake,
     apple: Position,
 
-    pub fn new() Self {
-        return .{ .apple = random_position() };
+    pub fn new(context: *Context) Self {
+        const snake = Snake.new(context);
+        var self = Self{ .snake = snake, .apple = .{ .x = 0, .y = 0 } };
+        self.spawnApple(context);
+        return self;
+    }
+
+    pub fn spawnApple(self: *Self, context: *Context) void {
+        while (true) {
+            const apple = randomPosition(context.prng);
+
+            if (self.snake.conflicts(apple)) {
+                continue;
+            }
+
+            self.apple = apple;
+            break;
+        }
+    }
+
+    pub fn render(self: Self, canvas: CanvasView) void {
+        _ = self;
+        _ = canvas;
     }
 };
 
-pub const Snake = struct { head: Position, tail: [100]Position, tail_index: usize };
+pub const Snake = struct {
+    const Self = @This();
 
-fn random_position() Position {
-    unreachable;
+    head: Position,
+    tail: [100]Position,
+    tail_index: usize,
+
+    pub fn new(context: *Context) Self {
+        return .{ .head = randomPosition(context.prng), .tail = undefined, .tail_index = 0 };
+    }
+
+    pub fn conflicts(self: Self, item: Position) bool {
+        if (self.head.equal(item)) {
+            return true;
+        }
+        for (self.currentTail()) |t| {
+            if (t.equal(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn currentTail(self: Self) []const Position {
+        return self.tail[0..self.tail_index];
+    }
+};
+
+fn randomPosition(prng: *std.rand.DefaultPrng) Position {
+    const rand = prng.random();
+    return .{ .x = rand.intRangeAtMost(i32, 0, 9), .y = rand.intRangeAtMost(i32, 0, 9) };
 }

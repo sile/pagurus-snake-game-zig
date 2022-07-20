@@ -35,6 +35,10 @@ pub const Position = struct {
     fn isLessThanOrEqualTo(self: Position, other: Position) bool {
         return self.x <= other.x and self.y <= other.y;
     }
+
+    pub fn equal(self: Position, other: Position) bool {
+        return self.x == other.x and self.y == other.y;
+    }
 };
 
 pub const Region = struct {
@@ -319,3 +323,5 @@ pub const EXIT_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
     .focused = EXIT_BUTTON_FOCUSED,
     .pressed = EXIT_BUTTON_PRESSED,
 });
+
+pub const IMG_ITEMS = @embedFile("../assets/items.rawrgba");
