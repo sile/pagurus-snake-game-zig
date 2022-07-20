@@ -9,6 +9,14 @@ const Position = assets.Position;
 const LogicalWindow = assets.LogicalWindow;
 const ALLOCATOR = @import("main.zig").ALLOCATOR;
 
+pub const Context = struct {
+    is_redraw_needed: bool,
+
+    pub fn new() Context {
+        return .{ .is_redraw_needed = false };
+    }
+};
+
 pub const SnakeGame = struct {
     logical_window: LogicalWindow,
     stage: Stage,
@@ -20,7 +28,9 @@ pub const SnakeGame = struct {
     }
 
     pub fn handleEvent(self: *SnakeGame, event_with_data: EventWithData) !bool {
-        if (self.stage.handleEvent(event_with_data)) {
+        var context = Context.new();
+        self.stage.handleEvent(event_with_data, &context);
+        if (context.is_redraw_needed) {
             self.drawVideoFrame() catch @panic("TODO");
         }
 
@@ -56,17 +66,13 @@ pub const Stage = union(enum) {
     playing: PlayingStage,
     game_over: GameOverStage,
 
-    pub fn handleEvent(self: *Stage, ewd: EventWithData) bool {
+    pub fn handleEvent(self: *Stage, ewd: EventWithData, context: *Context) void {
         switch (self.*) {
             .title => |*x| {
-                return x.handleEvent(ewd);
+                x.handleEvent(ewd, context);
             },
-            .playing => {
-                return false;
-            },
-            .game_over => {
-                return false;
-            },
+            .playing => {},
+            .game_over => {},
         }
     }
 
@@ -87,10 +93,13 @@ pub const TitleStage = struct {
         return .{ .play_button = assets.PLAY_BUTTON_WIDGET, .exit_button = assets.EXIT_BUTTON_WIDGET };
     }
 
-    fn handleEvent(self: *TitleStage, ewd: EventWithData) bool {
+    fn handleEvent(self: *TitleStage, ewd: EventWithData, context: *Context) void {
+        const buttons = ButtonGroup{ .buttons = &[_]*assets.ButtonWidget{ &self.play_button, &self.exit_button } };
+        buttons.handleEvent(ewd, context);
+
         _ = self;
         _ = ewd;
-        return false;
+        _ = context;
     }
 
     fn render(self: TitleStage, canvas: CanvasView) void {
@@ -102,3 +111,62 @@ pub const TitleStage = struct {
 pub const PlayingStage = struct {};
 
 pub const GameOverStage = struct {};
+
+pub const ButtonGroup = struct {
+    buttons: []*assets.ButtonWidget,
+
+    pub fn handleEvent(self: ButtonGroup, ewd: EventWithData, context: *Context) void {
+        const focused = find_focus: for (self.buttons) |b, i| {
+            if (b.isFocused()) {
+                break :find_focus i;
+            }
+        } else {
+            switch (ewd.event) {
+                .key_up => {
+                    self.buttons[0].state = assets.ButtonState.focused;
+                    context.is_redraw_needed = true;
+                },
+                else => {},
+            }
+            return;
+        };
+
+        switch (ewd.event) {
+            .key_up => |e| {
+                switch (e.key.up.key) {
+                    .up => {
+                        if (focused > 0) {
+                            self.buttons[focused].state = assets.ButtonState.normal;
+                            self.buttons[focused - 1].state = assets.ButtonState.focused;
+                            context.is_redraw_needed = true;
+                        }
+                    },
+                    .down => {
+                        if (focused < self.buttons.len - 1) {
+                            self.buttons[focused].state = assets.ButtonState.normal;
+                            self.buttons[focused + 1].state = assets.ButtonState.focused;
+                            context.is_redraw_needed = true;
+                        }
+                    },
+                    .@"return" => {
+                        if (self.buttons[focused].state == assets.ButtonState.pressed) {
+                            self.buttons[focused].state = assets.ButtonState.clicked;
+                            context.is_redraw_needed = true;
+                        }
+                    },
+                    else => {},
+                }
+            },
+            .key_down => |e| {
+                switch (e.key.down.key) {
+                    .@"return" => {
+                        self.buttons[focused].state = assets.ButtonState.pressed;
+                        context.is_redraw_needed = true;
+                    },
+                    else => {},
+                }
+            },
+            else => {},
+        }
+    }
+};

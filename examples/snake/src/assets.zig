@@ -276,6 +276,10 @@ pub const ButtonWidget = struct { //
         return .{ .state = ButtonState.normal, .sprites = sprites };
     }
 
+    pub fn isFocused(self: ButtonWidget) bool {
+        return self.state == ButtonState.focused;
+    }
+
     pub fn currentSprite(self: ButtonWidget) Sprite {
         switch (self.state) {
             .normal => {
