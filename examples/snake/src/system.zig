@@ -22,3 +22,15 @@ pub fn consoleLogFmt(comptime fmt: []const u8, args: anytype) void {
         consoleLog(message);
     }
 }
+
+extern fn systemClockGameTime() f64;
+
+pub fn clockGameTime() f64 {
+    return systemClockGameTime();
+}
+
+extern fn systemClockUnixTime() f64;
+
+pub fn clockUnixTime() f64 {
+    return systemClockUnixTime();
+}
