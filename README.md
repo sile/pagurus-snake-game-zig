@@ -1,2 +1,2 @@
-pagurus-zig
-===========
+pagurus-snake-game-zig
+======================
