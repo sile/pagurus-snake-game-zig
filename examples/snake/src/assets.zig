@@ -324,6 +324,26 @@ pub const EXIT_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
     .pressed = EXIT_BUTTON_PRESSED,
 });
 
+pub const RETRY_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 66), wh(160, 33));
+pub const RETRY_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 66), wh(160, 33));
+pub const RETRY_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 66), wh(160, 33));
+
+pub const RETRY_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
+    .normal = RETRY_BUTTON_NORMAL,
+    .focused = RETRY_BUTTON_FOCUSED,
+    .pressed = RETRY_BUTTON_PRESSED,
+});
+
+pub const TITLE_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 99), wh(160, 33));
+pub const TITLE_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 99), wh(160, 33));
+pub const TITLE_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 99), wh(160, 33));
+
+pub const TITLE_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
+    .normal = TITLE_BUTTON_NORMAL,
+    .focused = TITLE_BUTTON_FOCUSED,
+    .pressed = TITLE_BUTTON_PRESSED,
+});
+
 pub const IMG_ITEMS = @embedFile("../assets/items.rawrgba");
 
 pub const SNAKE_HEAD: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(0, 0), wh(32, 32));

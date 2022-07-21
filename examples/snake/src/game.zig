@@ -81,17 +81,29 @@ pub const Stage = union(StageType) {
         const next_stage_type = switch (self.*) {
             .title => |*x| x.handleEvent(ewd, context),
             .playing => |*x| x.handleEvent(ewd, context),
-            .game_over => unreachable,
+            .game_over => |*x| x.handleEvent(ewd, context),
         };
 
         if (next_stage_type) |ty| {
             switch (ty) {
-                .title => {},
+                .title => {
+                    self.* = .{ .title = TitleStage.new() };
+                },
                 .playing => {
                     self.* = .{ .playing = PlayingStage.new(context) };
                 },
-                .game_over => {},
+                .game_over => {
+                    switch (self.*) {
+                        .playing => |x| {
+                            self.* = .{ .game_over = GameOverStage.new(x.state) };
+                        },
+                        else => {
+                            unreachable;
+                        },
+                    }
+                },
             }
+            context.is_redraw_needed = true;
         }
     }
 
@@ -99,7 +111,7 @@ pub const Stage = union(StageType) {
         switch (self) {
             .title => |x| x.render(canvas),
             .playing => |x| x.render(canvas),
-            .game_over => {},
+            .game_over => |x| x.render(canvas),
         }
     }
 };
@@ -206,7 +218,38 @@ pub const PlayingStage = struct {
     }
 };
 
-pub const GameOverStage = struct {};
+pub const GameOverStage = struct {
+    const Self = @This();
+
+    state: GameState,
+    retry_button: assets.ButtonWidget,
+    title_button: assets.ButtonWidget,
+
+    pub fn new(state: GameState) Self {
+        return .{ //
+            .state = state,
+            .retry_button = assets.RETRY_BUTTON_WIDGET,
+            .title_button = assets.TITLE_BUTTON_WIDGET,
+        };
+    }
+
+    fn handleEvent(self: *Self, ewd: EventWithData, context: *Context) ?StageType {
+        const buttons = ButtonGroup{ .buttons = &[_]*assets.ButtonWidget{ &self.retry_button, &self.title_button } };
+        buttons.handleEvent(ewd, context);
+        if (self.retry_button.state == assets.ButtonState.clicked) {
+            return StageType.playing;
+        } else if (self.title_button.state == assets.ButtonState.clicked) {
+            return StageType.title;
+        } else {
+            return null;
+        }
+    }
+
+    fn render(self: Self, canvas: CanvasView) void {
+        canvas.drawSprite(xy(112, 206), self.retry_button.currentSprite());
+        canvas.drawSprite(xy(112, 250), self.title_button.currentSprite());
+    }
+};
 
 pub const ButtonGroup = struct {
     buttons: []*assets.ButtonWidget,
