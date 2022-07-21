@@ -187,10 +187,36 @@ pub const Canvas = struct {
 };
 
 pub const CanvasView = struct {
+    const Self = @This();
+
     canvas: Canvas,
     region: Region,
 
-    pub fn drawSprite(self: CanvasView, offset: Position, sprite: Sprite) void {
+    pub fn fillRgba(self: Self, color: Rgba) void {
+        const w = @intCast(i32, self.canvas.image_size.width);
+
+        const start = self.region.startPosition();
+        const end = self.region.endPosition();
+        var y = start.y;
+        while (y < end.y) : (y += 1) {
+            var x = start.x;
+            while (x < end.x) : (x += 1) {
+                const i = @intCast(usize, y * w + x) * 3;
+
+                // TODO: factor out
+                const rgb = color.toAlphaBlendRgb(.{
+                    .r = self.canvas.image_data[i + 0],
+                    .g = self.canvas.image_data[i + 1],
+                    .b = self.canvas.image_data[i + 2],
+                });
+                self.canvas.image_data[i + 0] = rgb.r;
+                self.canvas.image_data[i + 1] = rgb.g;
+                self.canvas.image_data[i + 2] = rgb.b;
+            }
+        }
+    }
+
+    pub fn drawSprite(self: Self, offset: Position, sprite: Sprite) void {
         const w = @intCast(i32, self.canvas.image_size.width);
         var canvas_offset = offset;
         canvas_offset.x += self.region.position.x;
@@ -205,7 +231,7 @@ pub const CanvasView = struct {
             if (self.region.containsPosition(canvas_pos)) {
                 const i = @intCast(usize, canvas_pos.y * w + canvas_pos.x) * 3;
 
-                const rgb = pixel.rgba.toAlphaBlendRgb(.{ //
+                const rgb = pixel.rgba.toAlphaBlendRgb(.{
                     .r = self.canvas.image_data[i + 0],
                     .g = self.canvas.image_data[i + 1],
                     .b = self.canvas.image_data[i + 2],
@@ -349,3 +375,39 @@ pub const IMG_ITEMS = @embedFile("../assets/items.rawrgba");
 pub const SNAKE_HEAD: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(0, 0), wh(32, 32));
 pub const SNAKE_TAIL: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(32, 0), wh(32, 32));
 pub const APPLE: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(64, 0), wh(32, 32));
+
+pub const IMG_CHARS_LARGE = @embedFile("../assets/chars-large.rawrgba");
+
+pub const STRING_SNAKE: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 0), wh(256, 64));
+pub const STRING_GAME: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 64), wh(256, 64));
+pub const STRING_OVER: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 128), wh(256, 64));
+
+pub const IMG_CHARS_SMALL = @embedFile("../assets/chars-small.rawrgba");
+
+pub const STRING_HIGH_SCORE: Sprite = createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 0), wh(112, 16));
+
+pub const NUM_SMALL: [10]Sprite = .{
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(10, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(20, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(30, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(40, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(50, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(60, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(70, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(80, 16), wh(10, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(90, 16), wh(10, 16)),
+};
+
+pub const NUM_LARGE: [10]Sprite = .{
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 32), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 32), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 32), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 32), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 32), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 48), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 48), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 48), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 48), wh(16, 16)),
+    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 48), wh(16, 16)),
+};

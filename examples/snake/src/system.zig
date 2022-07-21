@@ -40,3 +40,26 @@ extern fn systemClockSetTimeout(duration: f64) u64;
 pub fn clockSetTimeout(duration: f64) u64 {
     return systemClockSetTimeout(duration);
 }
+
+extern fn systemStateSave(name: *const u8, name_len: usize, data: *const u8, data_len: usize) u64;
+
+pub fn stateSave(name: []const u8, data: []const u8) u64 {
+    return systemStateSave(
+        @ptrCast(*const u8, name.ptr),
+        name.len,
+        @ptrCast(*const u8, data.ptr),
+        data.len,
+    );
+}
+
+extern fn systemStateLoad(name: *const u8, name_len: usize) u64;
+
+pub fn stateLoad(name: []const u8) u64 {
+    return systemStateLoad(@ptrCast(*const u8, name.ptr), name.len);
+}
+
+extern fn systemStateDelete(name: *const u8, name_len: usize) u64;
+
+pub fn stateDelete(name: []const u8) u64 {
+    return systemStateDelete(@ptrCast(*const u8, name.ptr), name.len);
+}

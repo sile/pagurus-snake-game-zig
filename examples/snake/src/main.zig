@@ -26,9 +26,8 @@ export fn gameHandleEvent(game_ptr: *anyopaque, event_bytes_ptr: *anyopaque, dat
     defer memoryFreeBytes(event_bytes_ptr);
 
     const event = parseEventJson(event_bytes.inner, .{ .ignore_unknown_fields = true }) orelse {
-        system.consoleLog("failed to parse JSON");
-        system.consoleLog(event_bytes.inner);
-        @panic("failed to parse Event JSON (TODO");
+        system.consoleLogFmt("failed to parse event JSON (ignored): {s}", .{event_bytes.inner});
+        return null;
     };
 
     const game = @ptrCast(*SnakeGame, @alignCast(@typeInfo(*SnakeGame).Pointer.alignment, game_ptr));

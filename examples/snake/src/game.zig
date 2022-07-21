@@ -11,13 +11,21 @@ const LogicalWindow = assets.LogicalWindow;
 const ALLOCATOR = @import("main.zig").ALLOCATOR;
 const std = @import("std");
 
+const STATE_HIGH_SCORE = "high_score";
+
 pub const Context = struct {
     prng: *std.rand.DefaultPrng,
     is_redraw_needed: bool,
+    high_score: *u8,
     exit: bool,
 
-    pub fn new(prng: *std.rand.DefaultPrng) Context {
-        return .{ .prng = prng, .is_redraw_needed = false, .exit = false };
+    pub fn new(prng: *std.rand.DefaultPrng, high_score: *u8) Context {
+        return .{
+            .prng = prng,
+            .is_redraw_needed = false,
+            .exit = false,
+            .high_score = high_score,
+        };
     }
 };
 
@@ -25,16 +33,20 @@ pub const SnakeGame = struct {
     logical_window: LogicalWindow,
     stage: Stage,
     prng: std.rand.DefaultPrng,
+    high_score: u8,
 
     pub fn initialize(self: *SnakeGame) !void {
         const canvas_size = Size.square(384);
         self.logical_window = LogicalWindow.new(canvas_size);
         self.stage = Stage{ .title = TitleStage.new() };
         self.prng = std.rand.DefaultPrng.init(@floatToInt(u64, system.clockUnixTime()));
+        self.high_score = 0;
+
+        _ = system.stateLoad(STATE_HIGH_SCORE);
     }
 
     pub fn handleEvent(self: *SnakeGame, event_with_data: EventWithData) !bool {
-        var context = Context.new(&self.prng);
+        var context = Context.new(&self.prng, &self.high_score);
         self.stage.handleEvent(event_with_data, &context);
         if (context.is_redraw_needed) {
             self.drawVideoFrame() catch @panic("TODO");
@@ -50,6 +62,12 @@ pub const SnakeGame = struct {
             },
             .window_redraw_needed => {
                 self.drawVideoFrame() catch @panic("TODO");
+            },
+            .state_loaded => {
+                if (event_with_data.data) |data| {
+                    self.high_score = data[0];
+                    self.drawVideoFrame() catch @panic("TODO");
+                }
             },
             else => {},
         }
@@ -95,7 +113,7 @@ pub const Stage = union(StageType) {
                 .game_over => {
                     switch (self.*) {
                         .playing => |x| {
-                            self.* = .{ .game_over = GameOverStage.new(x.state) };
+                            self.* = .{ .game_over = GameOverStage.new(x.state, context) };
                         },
                         else => {
                             unreachable;
@@ -117,14 +135,23 @@ pub const Stage = union(StageType) {
 };
 
 pub const TitleStage = struct {
+    const Self = @This();
+
     play_button: assets.ButtonWidget,
     exit_button: assets.ButtonWidget,
+    high_score: u8,
 
-    pub fn new() TitleStage {
-        return .{ .play_button = assets.PLAY_BUTTON_WIDGET, .exit_button = assets.EXIT_BUTTON_WIDGET };
+    pub fn new() Self {
+        return .{
+            .play_button = assets.PLAY_BUTTON_WIDGET,
+            .exit_button = assets.EXIT_BUTTON_WIDGET,
+            .high_score = 0,
+        };
     }
 
-    fn handleEvent(self: *TitleStage, ewd: EventWithData, context: *Context) ?StageType {
+    fn handleEvent(self: *Self, ewd: EventWithData, context: *Context) ?StageType {
+        self.high_score = context.high_score.*;
+
         const buttons = ButtonGroup{ .buttons = &[_]*assets.ButtonWidget{ &self.play_button, &self.exit_button } };
         buttons.handleEvent(ewd, context);
         if (self.play_button.state == assets.ButtonState.clicked) {
@@ -137,11 +164,20 @@ pub const TitleStage = struct {
         }
     }
 
-    fn render(self: TitleStage, canvas: CanvasView) void {
+    fn render(self: Self, canvas: CanvasView) void {
         canvas.drawSprite(xy(112, 206), self.play_button.currentSprite());
         canvas.drawSprite(xy(112, 250), self.exit_button.currentSprite());
+
+        canvas.drawSprite(xy(64, 96), assets.STRING_SNAKE);
+        renderHighScore(self.high_score, canvas);
     }
 };
+
+fn renderHighScore(score: u8, canvas: CanvasView) void {
+    canvas.drawSprite(xy(180, 160), assets.STRING_HIGH_SCORE);
+    canvas.drawSprite(xy(180 + 112, 160), assets.NUM_SMALL[score / 10]);
+    canvas.drawSprite(xy(180 + 112 + 11, 160), assets.NUM_SMALL[score % 10]);
+}
 
 const SNAKE_MOVE_INTERVAL: f64 = 0.2;
 
@@ -151,14 +187,14 @@ pub const PlayingStage = struct {
     state: GameState,
     nextDirection: Direction = Direction.up,
 
-    pub fn new(context: *Context) PlayingStage {
+    pub fn new(context: *Context) Self {
         _ = system.clockSetTimeout(SNAKE_MOVE_INTERVAL);
         return .{
             .state = GameState.new(context),
         };
     }
 
-    fn handleEvent(self: *PlayingStage, ewd: EventWithData, context: *Context) ?StageType {
+    fn handleEvent(self: *Self, ewd: EventWithData, context: *Context) ?StageType {
         switch (ewd.event) {
             .key_up => |e| {
                 return self.handleKeyUpEvent(e.key.up.key, context);
@@ -184,7 +220,7 @@ pub const PlayingStage = struct {
         }
     }
 
-    fn handleKeyUpEvent(self: *PlayingStage, key: Key, context: *Context) ?StageType {
+    fn handleKeyUpEvent(self: *Self, key: Key, context: *Context) ?StageType {
         _ = self;
         _ = context;
         switch (key) {
@@ -213,7 +249,7 @@ pub const PlayingStage = struct {
         return null;
     }
 
-    fn render(self: PlayingStage, canvas: CanvasView) void {
+    fn render(self: Self, canvas: CanvasView) void {
         self.state.render(canvas);
     }
 };
@@ -224,12 +260,19 @@ pub const GameOverStage = struct {
     state: GameState,
     retry_button: assets.ButtonWidget,
     title_button: assets.ButtonWidget,
+    high_score: u8,
 
-    pub fn new(state: GameState) Self {
-        return .{ //
+    pub fn new(state: GameState, context: *Context) Self {
+        if (state.score() > context.high_score.*) {
+            context.high_score.* = state.score();
+            _ = system.stateSave(STATE_HIGH_SCORE, &.{state.score()});
+        }
+
+        return .{
             .state = state,
             .retry_button = assets.RETRY_BUTTON_WIDGET,
             .title_button = assets.TITLE_BUTTON_WIDGET,
+            .high_score = context.high_score.*,
         };
     }
 
@@ -246,6 +289,14 @@ pub const GameOverStage = struct {
     }
 
     fn render(self: Self, canvas: CanvasView) void {
+        self.state.render(canvas);
+
+        canvas.drawSprite(xy(64, 40), assets.STRING_GAME);
+        canvas.drawSprite(xy(64, 100), assets.STRING_OVER);
+        renderHighScore(self.high_score, canvas);
+
+        canvas.fillRgba(.{ .r = 0, .g = 0, .b = 0, .a = 60 });
+
         canvas.drawSprite(xy(112, 206), self.retry_button.currentSprite());
         canvas.drawSprite(xy(112, 250), self.title_button.currentSprite());
     }
@@ -323,6 +374,10 @@ pub const GameState = struct {
         return self;
     }
 
+    pub fn score(self: Self) u8 {
+        return @intCast(u8, self.snake.tail_index);
+    }
+
     pub fn spawnApple(self: *Self, context: *Context) void {
         while (true) {
             const apple = randomPosition(context.prng);
@@ -345,6 +400,11 @@ pub const GameState = struct {
         for (self.snake.currentTail()) |tail| {
             canvas.drawSprite(cellPositionToCanvasPosition(tail), assets.SNAKE_TAIL);
         }
+
+        // Score.
+        const n = self.score();
+        canvas.drawSprite(xy(32 * 10, 8), assets.NUM_LARGE[n / 10]);
+        canvas.drawSprite(xy(32 * 10 + 16, 8), assets.NUM_LARGE[n % 10]);
     }
 };
 
