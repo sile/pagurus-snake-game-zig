@@ -325,3 +325,7 @@ pub const EXIT_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
 });
 
 pub const IMG_ITEMS = @embedFile("../assets/items.rawrgba");
+
+pub const SNAKE_HEAD: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(0, 0), wh(32, 32));
+pub const SNAKE_TAIL: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(32, 0), wh(32, 32));
+pub const APPLE: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(64, 0), wh(32, 32));

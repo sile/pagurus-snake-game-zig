@@ -1,5 +1,6 @@
 const system = @import("system.zig");
 const EventWithData = @import("event.zig").EventWithData;
+const Key = @import("event.zig").Key;
 const assets = @import("assets.zig");
 const xy = assets.xy;
 const Canvas = assets.Canvas;
@@ -130,21 +131,73 @@ pub const TitleStage = struct {
     }
 };
 
+const SNAKE_MOVE_INTERVAL: f64 = 0.2;
+
 pub const PlayingStage = struct {
     const Self = @This();
 
     state: GameState,
+    nextDirection: Direction = Direction.up,
 
     pub fn new(context: *Context) PlayingStage {
+        _ = system.clockSetTimeout(SNAKE_MOVE_INTERVAL);
         return .{
             .state = GameState.new(context),
         };
     }
 
     fn handleEvent(self: *PlayingStage, ewd: EventWithData, context: *Context) ?StageType {
+        switch (ewd.event) {
+            .key_up => |e| {
+                return self.handleKeyUpEvent(e.key.up.key, context);
+            },
+            .timeout => {
+                self.state.snake.direction = self.nextDirection;
+                if (self.state.snake.moveOne()) {
+                    if (self.state.snake.head.equal(self.state.apple)) {
+                        self.state.spawnApple(context);
+                    } else {
+                        self.state.snake.tail_index -= 1;
+                    }
+                    _ = system.clockSetTimeout(SNAKE_MOVE_INTERVAL);
+                    context.is_redraw_needed = true;
+                    return null;
+                } else {
+                    return StageType.game_over;
+                }
+            },
+            else => {
+                return null;
+            },
+        }
+    }
+
+    fn handleKeyUpEvent(self: *PlayingStage, key: Key, context: *Context) ?StageType {
         _ = self;
-        _ = ewd;
         _ = context;
+        switch (key) {
+            .up => {
+                if (self.state.snake.direction != Direction.down) {
+                    self.nextDirection = Direction.up;
+                }
+            },
+            .down => {
+                if (self.state.snake.direction != Direction.up) {
+                    self.nextDirection = Direction.down;
+                }
+            },
+            .left => {
+                if (self.state.snake.direction != Direction.right) {
+                    self.nextDirection = Direction.left;
+                }
+            },
+            .right => {
+                if (self.state.snake.direction != Direction.left) {
+                    self.nextDirection = Direction.right;
+                }
+            },
+            else => {},
+        }
         return null;
     }
 
@@ -221,7 +274,7 @@ pub const GameState = struct {
     apple: Position,
 
     pub fn new(context: *Context) Self {
-        const snake = Snake.new(context);
+        const snake = Snake.new();
         var self = Self{ .snake = snake, .apple = .{ .x = 0, .y = 0 } };
         self.spawnApple(context);
         return self;
@@ -241,10 +294,22 @@ pub const GameState = struct {
     }
 
     pub fn render(self: Self, canvas: CanvasView) void {
-        _ = self;
-        _ = canvas;
+        // Apple.
+        canvas.drawSprite(cellPositionToCanvasPosition(self.apple), assets.APPLE);
+
+        // Snake.
+        canvas.drawSprite(cellPositionToCanvasPosition(self.snake.head), assets.SNAKE_HEAD);
+        for (self.snake.currentTail()) |tail| {
+            canvas.drawSprite(cellPositionToCanvasPosition(tail), assets.SNAKE_TAIL);
+        }
     }
 };
+
+fn cellPositionToCanvasPosition(pos: Position) Position {
+    return .{ .x = (pos.x + 1) * 32, .y = (pos.y + 1) * 32 };
+}
+
+pub const Direction = enum { up, down, left, right };
 
 pub const Snake = struct {
     const Self = @This();
@@ -252,9 +317,49 @@ pub const Snake = struct {
     head: Position,
     tail: [100]Position,
     tail_index: usize,
+    direction: Direction,
 
-    pub fn new(context: *Context) Self {
-        return .{ .head = randomPosition(context.prng), .tail = undefined, .tail_index = 0 };
+    pub fn new() Self {
+        return .{ .head = .{ .x = 5, .y = 5 }, .tail = undefined, .tail_index = 0, .direction = Direction.up };
+    }
+
+    pub fn moveOne(self: *Self) bool {
+        var new_head = self.head;
+        switch (self.direction) {
+            .up => {
+                new_head.y -= 1;
+                if (new_head.y < 0) {
+                    return false;
+                }
+            },
+            .down => {
+                new_head.y += 1;
+                if (new_head.y > 9) {
+                    return false;
+                }
+            },
+            .left => {
+                new_head.x -= 1;
+                if (new_head.x < 0) {
+                    return false;
+                }
+            },
+            .right => {
+                new_head.x += 1;
+                if (new_head.x > 9) {
+                    return false;
+                }
+            },
+        }
+
+        var i = self.tail_index;
+        while (0 < i) : (i -= 1) {
+            self.tail[i] = self.tail[i - 1];
+        }
+        self.tail[0] = self.head;
+        self.tail_index += 1;
+        self.head = new_head;
+        return true;
     }
 
     pub fn conflicts(self: Self, item: Position) bool {

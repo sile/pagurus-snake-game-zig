@@ -34,3 +34,9 @@ extern fn systemClockUnixTime() f64;
 pub fn clockUnixTime() f64 {
     return systemClockUnixTime();
 }
+
+extern fn systemClockSetTimeout(duration: f64) u64;
+
+pub fn clockSetTimeout(duration: f64) u64 {
+    return systemClockSetTimeout(duration);
+}
