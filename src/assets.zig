@@ -1,348 +1,62 @@
-const std = @import("std");
-const system = @import("system.zig");
-const Event = @import("event.zig").Event;
-const Size = @import("spatial.zig").Size;
-const wh = Size.wh;
-const square = Size.square;
-const Position = @import("spatial.zig").Position;
-const xy = Position.xy;
-const Region = @import("spatial.zig").Region;
+const spatial = @import("spatial.zig");
+const wh = spatial.Size.wh;
+const square = spatial.Size.square;
+const xy = spatial.Position.xy;
+const Sprite = @import("image.zig").Sprite;
 
 pub const IMG_BACKGROUND = @embedFile("../assets/background.rawrgba");
-
-pub const Rgb = struct {
-    r: u8,
-    g: u8,
-    b: u8,
-
-    pub const BLACK: Rgb = .{ .r = 0, .g = 0, .b = 0 };
-};
-
-pub const Rgba = struct {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-
-    pub fn toAlphaBlendRgb(self: Rgba, dst: Rgb) Rgb {
-        return .{ .r = blend(self.r, dst.r, self.a), .g = blend(self.g, dst.g, self.a), .b = blend(self.b, dst.b, self.a) };
-    }
-};
-
-fn blend(src: u16, dst: u16, alpha: u16) u8 {
-    const v = src * alpha + dst * (255 - alpha);
-    return @intCast(u8, v / 255);
-}
-
-pub const PixelIterator = struct {
-    pub const Item = struct { position: Position, rgba: Rgba };
-
-    sprite: Sprite,
-    position: Position,
-
-    pub fn next(self: *PixelIterator) ?PixelIterator.Item {
-        if (self.position.y == self.sprite.sprite_region.endPosition().y) {
-            return null;
-        }
-
-        const current = self.position;
-        self.position.x += 1;
-        if (self.position.x == self.sprite.sprite_region.endPosition().x) {
-            self.position.x = self.sprite.sprite_region.position.x;
-            self.position.y += 1;
-        }
-
-        const i = (@intCast(usize, current.y) * @intCast(usize, self.sprite.image_size.width) + @intCast(usize, current.x)) * 4;
-        const pixel = .{ //
-            .r = self.sprite.image_data[i],
-            .g = self.sprite.image_data[i + 1],
-            .b = self.sprite.image_data[i + 2],
-            .a = self.sprite.image_data[i + 3],
-        };
-
-        var relative_position = current;
-        relative_position.x -= self.sprite.sprite_region.position.x;
-        relative_position.y -= self.sprite.sprite_region.position.y;
-        return PixelIterator.Item{ .position = relative_position, .rgba = pixel };
-    }
-};
-
-// TODO: move
-pub const Sprite = struct {
-    // RGBA
-    image_data: []const u8,
-    image_size: Size,
-    sprite_region: Region,
-
-    pub fn pixels(self: Sprite) PixelIterator {
-        return .{ .sprite = self, .position = self.sprite_region.position };
-    }
-};
-
-pub fn createSprite(image_data: []const u8, image_size: Size, sprite_position: Position, sprite_size: Size) Sprite {
-    return .{ .image_data = image_data, .image_size = image_size, .sprite_region = .{ .position = sprite_position, .size = sprite_size } };
-}
-
-pub const Canvas = struct {
-    // RGB
-    image_data: []u8,
-    image_size: Size,
-
-    pub fn new(allocator: std.mem.Allocator, size: Size) !Canvas {
-        const data = try allocator.alloc(u8, size.width * size.height * 3);
-        return Canvas{ .image_data = data, .image_size = size };
-    }
-
-    pub fn deinit(self: Canvas, allocator: std.mem.Allocator) void {
-        allocator.free(self.image_data);
-    }
-
-    pub fn view(self: Canvas, region: Region) !CanvasView {
-        const self_region = self.image_size.toRegion();
-        const contains = self_region.containsRegion(region);
-        if (!contains) {
-            return error.CanvasOutOfRegion;
-        }
-        return CanvasView{ .canvas = self, .region = region };
-    }
-
-    pub fn fillRgb(self: Canvas, color: Rgb) void {
-        var i: usize = 0;
-        while (i < self.image_data.len) : (i += 3) {
-            self.image_data[i + 0] = color.r;
-            self.image_data[i + 1] = color.g;
-            self.image_data[i + 2] = color.b;
-        }
-    }
-
-    pub fn drawSprite(self: Canvas, offset: Position, sprite: Sprite) void {
-        var canvas_view = self.view(self.image_size.toRegion()) catch unreachable;
-        canvas_view.drawSprite(offset, sprite);
-    }
-};
-
-pub const CanvasView = struct {
-    const Self = @This();
-
-    canvas: Canvas,
-    region: Region,
-
-    pub fn fillRgba(self: Self, color: Rgba) void {
-        const w = @intCast(i32, self.canvas.image_size.width);
-
-        const start = self.region.startPosition();
-        const end = self.region.endPosition();
-        var y = start.y;
-        while (y < end.y) : (y += 1) {
-            var x = start.x;
-            while (x < end.x) : (x += 1) {
-                const i = @intCast(usize, y * w + x) * 3;
-
-                // TODO: factor out
-                const rgb = color.toAlphaBlendRgb(.{
-                    .r = self.canvas.image_data[i + 0],
-                    .g = self.canvas.image_data[i + 1],
-                    .b = self.canvas.image_data[i + 2],
-                });
-                self.canvas.image_data[i + 0] = rgb.r;
-                self.canvas.image_data[i + 1] = rgb.g;
-                self.canvas.image_data[i + 2] = rgb.b;
-            }
-        }
-    }
-
-    pub fn drawSprite(self: Self, offset: Position, sprite: Sprite) void {
-        const w = @intCast(i32, self.canvas.image_size.width);
-        var canvas_offset = offset;
-        canvas_offset.x += self.region.position.x;
-        canvas_offset.y += self.region.position.y;
-
-        var pixels = sprite.pixels();
-        while (pixels.next()) |pixel| {
-            var canvas_pos = canvas_offset;
-            canvas_pos.x += pixel.position.x;
-            canvas_pos.y += pixel.position.y;
-
-            if (self.region.containsPosition(canvas_pos)) {
-                const i = @intCast(usize, canvas_pos.y * w + canvas_pos.x) * 3;
-
-                const rgb = pixel.rgba.toAlphaBlendRgb(.{
-                    .r = self.canvas.image_data[i + 0],
-                    .g = self.canvas.image_data[i + 1],
-                    .b = self.canvas.image_data[i + 2],
-                });
-                self.canvas.image_data[i + 0] = rgb.r;
-                self.canvas.image_data[i + 1] = rgb.g;
-                self.canvas.image_data[i + 2] = rgb.b;
-            }
-        }
-    }
-};
-
-pub const LogicalWindow = struct {
-    canvas_region: Region,
-    logical_window_size: Size,
-    actual_window_size: Size,
-
-    pub fn new(canvas_size: Size) LogicalWindow {
-        return .{
-            .canvas_region = canvas_size.toRegion(),
-            .logical_window_size = canvas_size,
-            .actual_window_size = square(0),
-        };
-    }
-
-    pub fn handleEvent(self: *LogicalWindow, event: Event) Event {
-        // TODO: handle mouse event
-        switch (event) {
-            .window_redraw_needed => |e| {
-                self.handleWindowSizeChange(e.window.redrawNeeded.size);
-            },
-            else => {},
-        }
-        return event;
-    }
-
-    fn handleWindowSizeChange(self: *LogicalWindow, size: Size) void {
-        self.actual_window_size = size;
-        self.logical_window_size = self.canvas_region.size;
-
-        var canvas = self.canvas_region.size;
-        var actual_window = self.actual_window_size;
-        if (canvas.aspectRatio() > actual_window.aspectRatio()) {
-            const scale = @intToFloat(f32, canvas.width) / @intToFloat(f32, actual_window.width);
-            self.logical_window_size.height =
-                @floatToInt(u32, @round(@intToFloat(f32, actual_window.height) * scale));
-            const padding = (self.logical_window_size.height - canvas.height) / 2;
-            self.canvas_region.position = xy(0, @intCast(i32, padding));
-        } else if (canvas.aspectRatio() < actual_window.aspectRatio()) {
-            const scale = @intToFloat(f32, canvas.height) / @intToFloat(f32, actual_window.height);
-            self.logical_window_size.width =
-                @floatToInt(u32, @round(@intToFloat(f32, actual_window.width) * scale));
-            const padding = (self.logical_window_size.width - canvas.width) / 2;
-            self.canvas_region.position = xy(@intCast(i32, padding), 0);
-        } else {
-            self.canvas_region.position = Position.ORIGIN;
-        }
-    }
-};
-
-pub const BACKGROUND = createSprite(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));
-
-pub const ButtonState = enum { normal, focused, pressed, clicked };
-
-pub const ButtonSprites = struct { normal: Sprite, focused: Sprite, pressed: Sprite };
-
-pub const ButtonWidget = struct { //
-    state: ButtonState,
-    sprites: ButtonSprites,
-
-    pub fn new(sprites: ButtonSprites) ButtonWidget {
-        return .{ .state = ButtonState.normal, .sprites = sprites };
-    }
-
-    pub fn isFocused(self: ButtonWidget) bool {
-        return self.state == ButtonState.focused;
-    }
-
-    pub fn currentSprite(self: ButtonWidget) Sprite {
-        switch (self.state) {
-            .normal => {
-                return self.sprites.normal;
-            },
-            .focused => {
-                return self.sprites.focused;
-            },
-            .pressed => {
-                return self.sprites.pressed;
-            },
-            .clicked => {
-                return self.sprites.pressed;
-            },
-        }
-    }
-};
+pub const BACKGROUND = Sprite.create(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));
 
 pub const IMG_BUTTONS = @embedFile("../assets/buttons.rawrgba");
+pub const PLAY_BUTTON_NORMAL: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 0), wh(160, 33));
+pub const PLAY_BUTTON_FOCUSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 0), wh(160, 33));
+pub const PLAY_BUTTON_PRESSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 0), wh(160, 33));
 
-pub const PLAY_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 0), wh(160, 33));
-pub const PLAY_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 0), wh(160, 33));
-pub const PLAY_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 0), wh(160, 33));
+pub const EXIT_BUTTON_NORMAL: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 33), wh(160, 33));
+pub const EXIT_BUTTON_FOCUSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 33), wh(160, 33));
+pub const EXIT_BUTTON_PRESSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 33), wh(160, 33));
 
-pub const PLAY_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
-    .normal = PLAY_BUTTON_NORMAL,
-    .focused = PLAY_BUTTON_FOCUSED,
-    .pressed = PLAY_BUTTON_PRESSED,
-});
+pub const RETRY_BUTTON_NORMAL: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 66), wh(160, 33));
+pub const RETRY_BUTTON_FOCUSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 66), wh(160, 33));
+pub const RETRY_BUTTON_PRESSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 66), wh(160, 33));
 
-pub const EXIT_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 33), wh(160, 33));
-pub const EXIT_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 33), wh(160, 33));
-pub const EXIT_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 33), wh(160, 33));
-
-pub const EXIT_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
-    .normal = EXIT_BUTTON_NORMAL,
-    .focused = EXIT_BUTTON_FOCUSED,
-    .pressed = EXIT_BUTTON_PRESSED,
-});
-
-pub const RETRY_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 66), wh(160, 33));
-pub const RETRY_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 66), wh(160, 33));
-pub const RETRY_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 66), wh(160, 33));
-
-pub const RETRY_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
-    .normal = RETRY_BUTTON_NORMAL,
-    .focused = RETRY_BUTTON_FOCUSED,
-    .pressed = RETRY_BUTTON_PRESSED,
-});
-
-pub const TITLE_BUTTON_NORMAL: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 99), wh(160, 33));
-pub const TITLE_BUTTON_FOCUSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 99), wh(160, 33));
-pub const TITLE_BUTTON_PRESSED: Sprite = createSprite(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 99), wh(160, 33));
-
-pub const TITLE_BUTTON_WIDGET: ButtonWidget = ButtonWidget.new(.{
-    .normal = TITLE_BUTTON_NORMAL,
-    .focused = TITLE_BUTTON_FOCUSED,
-    .pressed = TITLE_BUTTON_PRESSED,
-});
+pub const TITLE_BUTTON_NORMAL: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(160, 99), wh(160, 33));
+pub const TITLE_BUTTON_FOCUSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(320, 99), wh(160, 33));
+pub const TITLE_BUTTON_PRESSED: Sprite = Sprite.create(IMG_BUTTONS.*[0..], wh(480, 132), xy(0, 99), wh(160, 33));
 
 pub const IMG_ITEMS = @embedFile("../assets/items.rawrgba");
-
-pub const SNAKE_HEAD: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(0, 0), wh(32, 32));
-pub const SNAKE_TAIL: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(32, 0), wh(32, 32));
-pub const APPLE: Sprite = createSprite(IMG_ITEMS.*[0..], wh(96, 32), xy(64, 0), wh(32, 32));
+pub const SNAKE_HEAD: Sprite = Sprite.create(IMG_ITEMS.*[0..], wh(96, 32), xy(0, 0), wh(32, 32));
+pub const SNAKE_TAIL: Sprite = Sprite.create(IMG_ITEMS.*[0..], wh(96, 32), xy(32, 0), wh(32, 32));
+pub const APPLE: Sprite = Sprite.create(IMG_ITEMS.*[0..], wh(96, 32), xy(64, 0), wh(32, 32));
 
 pub const IMG_CHARS_LARGE = @embedFile("../assets/chars-large.rawrgba");
-
-pub const STRING_SNAKE: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 0), wh(256, 64));
-pub const STRING_GAME: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 64), wh(256, 64));
-pub const STRING_OVER: Sprite = createSprite(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 128), wh(256, 64));
+pub const STRING_SNAKE: Sprite = Sprite.create(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 0), wh(256, 64));
+pub const STRING_GAME: Sprite = Sprite.create(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 64), wh(256, 64));
+pub const STRING_OVER: Sprite = Sprite.create(IMG_CHARS_LARGE.*[0..], wh(256, 192), xy(0, 128), wh(256, 64));
 
 pub const IMG_CHARS_SMALL = @embedFile("../assets/chars-small.rawrgba");
-
-pub const STRING_HIGH_SCORE: Sprite = createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 0), wh(112, 16));
-
+pub const STRING_HIGH_SCORE: Sprite = Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 0), wh(112, 16));
 pub const NUM_SMALL: [10]Sprite = .{
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(10, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(20, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(30, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(40, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(50, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(60, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(70, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(80, 16), wh(10, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(90, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(10, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(20, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(30, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(40, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(50, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(60, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(70, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(80, 16), wh(10, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(90, 16), wh(10, 16)),
 };
-
 pub const NUM_LARGE: [10]Sprite = .{
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 32), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 32), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 32), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 32), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 32), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 48), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 48), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 48), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 48), wh(16, 16)),
-    createSprite(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 48), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 32), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 32), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 32), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 32), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 32), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(0, 48), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(16, 48), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(32, 48), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(48, 48), wh(16, 16)),
+    Sprite.create(IMG_CHARS_SMALL.*[0..], wh(112, 64), xy(64, 48), wh(16, 16)),
 };

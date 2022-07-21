@@ -77,7 +77,7 @@ export fn memoryFreeBytes(bytes_ptr: *anyopaque) void {
 
 const Bytes = struct { inner: []u8 };
 
-fn abort(message: []const u8) void {
+fn abort(message: []const u8) noreturn {
     system.consoleLog(message);
     @panic(message);
 }

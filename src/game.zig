@@ -3,13 +3,18 @@ const system = @import("system.zig");
 const EventWithData = @import("event.zig").EventWithData;
 const Key = @import("event.zig").Key;
 const assets = @import("assets.zig");
-const Canvas = assets.Canvas;
-const CanvasView = assets.CanvasView;
+const image = @import("image.zig");
+const Canvas = image.Canvas;
+const CanvasView = image.CanvasView;
 const Size = @import("spatial.zig").Size;
 const Position = @import("spatial.zig").Position;
 const xy = Position.xy;
-const LogicalWindow = assets.LogicalWindow;
+const widget = @import("widget.zig");
+const LogicalWindow = widget.LogicalWindow;
+const Button = widget.Button;
+const ButtonGroup = widget.ButtonGroup;
 const ALLOCATOR = @import("main.zig").ALLOCATOR;
+const BLACK = @import("image.zig").Rgb.BLACK;
 
 const STATE_HIGH_SCORE = "high_score";
 
@@ -38,7 +43,7 @@ pub const SnakeGame = struct {
     pub fn initialize(self: *SnakeGame) !void {
         const canvas_size = Size.square(384);
         self.logical_window = LogicalWindow.new(canvas_size);
-        self.stage = Stage{ .title = TitleStage.new() };
+        self.stage = Stage{ .title = TitleStage.new(0) };
         self.prng = std.rand.DefaultPrng.init(@floatToInt(u64, system.clockUnixTime()));
         self.high_score = 0;
 
@@ -47,13 +52,6 @@ pub const SnakeGame = struct {
 
     pub fn handleEvent(self: *SnakeGame, event_with_data: EventWithData) !bool {
         var context = Context.new(&self.prng, &self.high_score);
-        self.stage.handleEvent(event_with_data, &context);
-        if (context.is_redraw_needed) {
-            self.drawVideoFrame() catch @panic("TODO");
-        }
-        if (context.exit) {
-            return false;
-        }
 
         const event = self.logical_window.handleEvent(event_with_data.event);
         switch (event) {
@@ -61,16 +59,25 @@ pub const SnakeGame = struct {
                 return false;
             },
             .window_redraw_needed => {
-                self.drawVideoFrame() catch @panic("TODO");
+                context.is_redraw_needed = true;
             },
             .state_loaded => {
                 if (event_with_data.data) |data| {
                     self.high_score = data[0];
-                    self.drawVideoFrame() catch @panic("TODO");
+                    context.is_redraw_needed = true;
                 }
             },
             else => {},
         }
+
+        self.stage.handleEvent(event_with_data, &context);
+        if (context.is_redraw_needed) {
+            try self.drawVideoFrame();
+        }
+        if (context.exit) {
+            return false;
+        }
+
         return true;
     }
 
@@ -78,13 +85,13 @@ pub const SnakeGame = struct {
         var canvas = try Canvas.new(ALLOCATOR, self.logical_window.logical_window_size);
         defer canvas.deinit(ALLOCATOR);
 
-        canvas.fillRgb(.{ .r = 0, .g = 0, .b = 0 });
+        canvas.fillRgb(BLACK);
         var canvas_view = try canvas.view(self.logical_window.canvas_region);
         canvas_view.drawSprite(Position.ORIGIN, assets.BACKGROUND);
 
         self.stage.render(canvas_view);
 
-        system.videoDraw(canvas.image_data, canvas.image_size);
+        system.videoDraw(canvas.data, canvas.size);
     }
 };
 
@@ -105,7 +112,7 @@ pub const Stage = union(StageType) {
         if (next_stage_type) |ty| {
             switch (ty) {
                 .title => {
-                    self.* = .{ .title = TitleStage.new() };
+                    self.* = .{ .title = TitleStage.new(context.high_score.*) };
                 },
                 .playing => {
                     self.* = .{ .playing = PlayingStage.new(context) };
@@ -137,26 +144,29 @@ pub const Stage = union(StageType) {
 pub const TitleStage = struct {
     const Self = @This();
 
-    play_button: assets.ButtonWidget,
-    exit_button: assets.ButtonWidget,
+    play_button: Button,
+    exit_button: Button,
     high_score: u8,
 
-    pub fn new() Self {
+    pub fn new(high_score: u8) Self {
         return .{
-            .play_button = assets.PLAY_BUTTON_WIDGET,
-            .exit_button = assets.EXIT_BUTTON_WIDGET,
-            .high_score = 0,
+            .play_button = Button.PLAY,
+            .exit_button = Button.EXIT,
+            .high_score = high_score,
         };
     }
 
     fn handleEvent(self: *Self, ewd: EventWithData, context: *Context) ?StageType {
         self.high_score = context.high_score.*;
 
-        const buttons = ButtonGroup{ .buttons = &[_]*assets.ButtonWidget{ &self.play_button, &self.exit_button } };
-        buttons.handleEvent(ewd, context);
-        if (self.play_button.state == assets.ButtonState.clicked) {
+        const buttons = ButtonGroup{ .buttons = &[_]*Button{ &self.play_button, &self.exit_button } };
+        if (buttons.handleEvent(ewd.event)) {
+            context.is_redraw_needed = true;
+        }
+
+        if (self.play_button.state == Button.State.clicked) {
             return StageType.playing;
-        } else if (self.exit_button.state == assets.ButtonState.clicked) {
+        } else if (self.exit_button.state == Button.State.clicked) {
             context.exit = true;
             return null;
         } else {
@@ -258,8 +268,8 @@ pub const GameOverStage = struct {
     const Self = @This();
 
     state: GameState,
-    retry_button: assets.ButtonWidget,
-    title_button: assets.ButtonWidget,
+    retry_button: Button,
+    title_button: Button,
     high_score: u8,
 
     pub fn new(state: GameState, context: *Context) Self {
@@ -270,18 +280,21 @@ pub const GameOverStage = struct {
 
         return .{
             .state = state,
-            .retry_button = assets.RETRY_BUTTON_WIDGET,
-            .title_button = assets.TITLE_BUTTON_WIDGET,
+            .retry_button = Button.RETRY,
+            .title_button = Button.TITLE,
             .high_score = context.high_score.*,
         };
     }
 
     fn handleEvent(self: *Self, ewd: EventWithData, context: *Context) ?StageType {
-        const buttons = ButtonGroup{ .buttons = &[_]*assets.ButtonWidget{ &self.retry_button, &self.title_button } };
-        buttons.handleEvent(ewd, context);
-        if (self.retry_button.state == assets.ButtonState.clicked) {
+        const buttons = ButtonGroup{ .buttons = &[_]*Button{ &self.retry_button, &self.title_button } };
+        if (buttons.handleEvent(ewd.event)) {
+            context.is_redraw_needed = true;
+        }
+
+        if (self.retry_button.state == Button.State.clicked) {
             return StageType.playing;
-        } else if (self.title_button.state == assets.ButtonState.clicked) {
+        } else if (self.title_button.state == Button.State.clicked) {
             return StageType.title;
         } else {
             return null;
@@ -295,69 +308,10 @@ pub const GameOverStage = struct {
         canvas.drawSprite(xy(64, 100), assets.STRING_OVER);
         renderHighScore(self.high_score, canvas);
 
-        canvas.fillRgba(.{ .r = 0, .g = 0, .b = 0, .a = 60 });
+        canvas.fillRgba(BLACK.alpha(60));
 
         canvas.drawSprite(xy(112, 206), self.retry_button.currentSprite());
         canvas.drawSprite(xy(112, 250), self.title_button.currentSprite());
-    }
-};
-
-pub const ButtonGroup = struct {
-    buttons: []*assets.ButtonWidget,
-
-    pub fn handleEvent(self: ButtonGroup, ewd: EventWithData, context: *Context) void {
-        const focused = find_focus: for (self.buttons) |b, i| {
-            if (b.state != assets.ButtonState.normal) {
-                break :find_focus i;
-            }
-        } else {
-            switch (ewd.event) {
-                .key_up => {
-                    self.buttons[0].state = assets.ButtonState.focused;
-                    context.is_redraw_needed = true;
-                },
-                else => {},
-            }
-            return;
-        };
-
-        switch (ewd.event) {
-            .key_up => |e| {
-                switch (e.key.up.key) {
-                    .up => {
-                        if (focused > 0) {
-                            self.buttons[focused].state = assets.ButtonState.normal;
-                            self.buttons[focused - 1].state = assets.ButtonState.focused;
-                            context.is_redraw_needed = true;
-                        }
-                    },
-                    .down => {
-                        if (focused < self.buttons.len - 1) {
-                            self.buttons[focused].state = assets.ButtonState.normal;
-                            self.buttons[focused + 1].state = assets.ButtonState.focused;
-                            context.is_redraw_needed = true;
-                        }
-                    },
-                    .@"return" => {
-                        if (self.buttons[focused].state == assets.ButtonState.pressed) {
-                            self.buttons[focused].state = assets.ButtonState.clicked;
-                            context.is_redraw_needed = true;
-                        }
-                    },
-                    else => {},
-                }
-            },
-            .key_down => |e| {
-                switch (e.key.down.key) {
-                    .@"return" => {
-                        self.buttons[focused].state = assets.ButtonState.pressed;
-                        context.is_redraw_needed = true;
-                    },
-                    else => {},
-                }
-            },
-            else => {},
-        }
     }
 };
 
