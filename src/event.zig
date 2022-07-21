@@ -1,5 +1,5 @@
 const std = @import("std");
-const Size = @import("assets.zig").Size;
+const Size = @import("spatial.zig").Size;
 
 pub const ActionId = u64;
 
@@ -10,11 +10,53 @@ pub const Event = union(enum) {
     timeout: TimeoutEvent,
     key_down: KeyDownEvent,
     key_up: KeyUpEvent,
-    //mouse: MouseEvent,
     window_redraw_needed: WindowRedrawNeededEvent,
     state_saved: StateSavedEvent,
     state_loaded: StateLoadedEvent,
     state_deleted: StateDeletedEvent,
+
+    pub fn parseJson(json: []u8, options: std.json.ParseOptions) ?Event {
+        if (std.mem.startsWith(u8, json, "\"terminating\"")) {
+            return Event{ .terminating = void{} };
+        }
+
+        var stream = std.json.TokenStream.init(json);
+        if (std.json.parse(TimeoutEvent, &stream, options) catch null) |event| {
+            return Event{ .timeout = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(KeyDownEvent, &stream, options) catch null) |event| {
+            return Event{ .key_down = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(KeyUpEvent, &stream, options) catch null) |event| {
+            return Event{ .key_up = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(WindowRedrawNeededEvent, &stream, options) catch null) |event| {
+            return Event{ .window_redraw_needed = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(StateSavedEvent, &stream, options) catch null) |event| {
+            return Event{ .state_saved = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(StateLoadedEvent, &stream, options) catch null) |event| {
+            return Event{ .state_loaded = event };
+        }
+
+        stream = std.json.TokenStream.init(json);
+        if (std.json.parse(StateDeletedEvent, &stream, options) catch null) |event| {
+            return Event{ .state_deleted = event };
+        }
+
+        return null;
+    }
 };
 
 pub const TimeoutEvent = struct { timeout: struct { id: ActionId } };
@@ -40,46 +82,3 @@ pub const Key = enum {
     up,
     down,
 };
-
-pub fn parseJson(json: []u8, options: std.json.ParseOptions) ?Event {
-    if (std.mem.startsWith(u8, json, "\"terminating\"")) {
-        return Event{ .terminating = void{} };
-    }
-
-    var stream = std.json.TokenStream.init(json);
-    if (std.json.parse(TimeoutEvent, &stream, options) catch null) |event| {
-        return Event{ .timeout = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(KeyDownEvent, &stream, options) catch null) |event| {
-        return Event{ .key_down = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(KeyUpEvent, &stream, options) catch null) |event| {
-        return Event{ .key_up = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(WindowRedrawNeededEvent, &stream, options) catch null) |event| {
-        return Event{ .window_redraw_needed = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(StateSavedEvent, &stream, options) catch null) |event| {
-        return Event{ .state_saved = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(StateLoadedEvent, &stream, options) catch null) |event| {
-        return Event{ .state_loaded = event };
-    }
-
-    stream = std.json.TokenStream.init(json);
-    if (std.json.parse(StateDeletedEvent, &stream, options) catch null) |event| {
-        return Event{ .state_deleted = event };
-    }
-
-    return null;
-}

@@ -1,67 +1,14 @@
+const std = @import("std");
 const system = @import("system.zig");
 const Event = @import("event.zig").Event;
-const std = @import("std");
+const Size = @import("spatial.zig").Size;
+const wh = Size.wh;
+const square = Size.square;
+const Position = @import("spatial.zig").Position;
+const xy = Position.xy;
+const Region = @import("spatial.zig").Region;
 
 pub const IMG_BACKGROUND = @embedFile("../assets/background.rawrgba");
-
-// TODO: move
-pub const Size = struct {
-    width: u32,
-    height: u32,
-
-    pub fn equal(self: Size, other: Size) bool {
-        return self.width == other.width and self.height == other.height;
-    }
-
-    pub fn toRegion(self: Size) Region {
-        return .{ .position = xy(0, 0), .size = self };
-    }
-
-    pub fn square(size: usize) Size {
-        return .{ .width = size, .height = size };
-    }
-
-    pub fn aspectRatio(self: Size) f32 {
-        return @intToFloat(f32, self.width) / @intToFloat(f32, self.height);
-    }
-};
-
-pub const Position = struct {
-    x: i32,
-    y: i32,
-
-    pub const ORIGIN: Position = .{ .x = 0, .y = 0 };
-
-    fn isLessThanOrEqualTo(self: Position, other: Position) bool {
-        return self.x <= other.x and self.y <= other.y;
-    }
-
-    pub fn equal(self: Position, other: Position) bool {
-        return self.x == other.x and self.y == other.y;
-    }
-};
-
-pub const Region = struct {
-    position: Position,
-    size: Size,
-
-    pub fn startPosition(self: Region) Position {
-        return self.position;
-    }
-
-    pub fn endPosition(self: Region) Position {
-        return .{ .x = self.position.x + @intCast(i32, self.size.width), .y = self.position.y + @intCast(i32, self.size.height) };
-    }
-
-    pub fn containsRegion(self: Region, other: Region) bool {
-        return self.startPosition().isLessThanOrEqualTo(other.startPosition()) and
-            other.endPosition().isLessThanOrEqualTo(self.endPosition());
-    }
-
-    pub fn containsPosition(self: Region, pos: Position) bool {
-        return self.containsRegion(.{ .position = pos, .size = wh(0, 0) });
-    }
-};
 
 pub const Rgb = struct {
     r: u8,
@@ -134,18 +81,6 @@ pub const Sprite = struct {
 
 pub fn createSprite(image_data: []const u8, image_size: Size, sprite_position: Position, sprite_size: Size) Sprite {
     return .{ .image_data = image_data, .image_size = image_size, .sprite_region = .{ .position = sprite_position, .size = sprite_size } };
-}
-
-pub fn xy(x: i32, y: i32) Position {
-    return .{ .x = x, .y = y };
-}
-
-pub fn wh(width: u32, height: u32) Size {
-    return .{ .width = width, .height = height };
-}
-
-pub fn square(size: u32) Size {
-    return wh(size, size);
 }
 
 pub const Canvas = struct {
@@ -250,10 +185,10 @@ pub const LogicalWindow = struct {
     actual_window_size: Size,
 
     pub fn new(canvas_size: Size) LogicalWindow {
-        return .{ //
+        return .{
             .canvas_region = canvas_size.toRegion(),
             .logical_window_size = canvas_size,
-            .actual_window_size = Size.square(0),
+            .actual_window_size = square(0),
         };
     }
 
@@ -292,7 +227,7 @@ pub const LogicalWindow = struct {
     }
 };
 
-pub const BACKGROUND: Sprite = createSprite(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));
+pub const BACKGROUND = createSprite(IMG_BACKGROUND.*[0..], square(384), xy(0, 0), square(384));
 
 pub const ButtonState = enum { normal, focused, pressed, clicked };
 

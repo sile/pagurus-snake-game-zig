@@ -1,15 +1,15 @@
+const std = @import("std");
 const system = @import("system.zig");
 const EventWithData = @import("event.zig").EventWithData;
 const Key = @import("event.zig").Key;
 const assets = @import("assets.zig");
-const xy = assets.xy;
 const Canvas = assets.Canvas;
 const CanvasView = assets.CanvasView;
-const Size = assets.Size;
-const Position = assets.Position;
+const Size = @import("spatial.zig").Size;
+const Position = @import("spatial.zig").Position;
+const xy = Position.xy;
 const LogicalWindow = assets.LogicalWindow;
 const ALLOCATOR = @import("main.zig").ALLOCATOR;
-const std = @import("std");
 
 const STATE_HIGH_SCORE = "high_score";
 

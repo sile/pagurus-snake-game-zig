@@ -1,5 +1,5 @@
 const std = @import("std");
-const Size = @import("assets.zig").Size;
+const Size = @import("spatial.zig").Size;
 
 extern fn systemVideoDraw(data: *const u8, data_len: usize, width: u32) void;
 
